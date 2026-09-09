@@ -1,0 +1,9 @@
+/* Shared logo for the JMBA Hub menu and GLPI item icon. */
+.jmba-hub-menu-logo {
+    display: inline-block;
+    width: 1.5rem;
+    height: 1.5rem;
+    flex: 0 0 1.5rem;
+    background: url('../logo.svg') center / contain no-repeat;
+    vertical-align: middle;
+}
