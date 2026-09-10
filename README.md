@@ -51,28 +51,6 @@ Configure a URL base do GLPI e use **Ativar notificações** ou **Verificar e re
 
 As regras do painel definem quais participantes recebem cada evento. Falhas de conexão são exibidas na configuração e não impedem a instalação do plugin.
 
-### Integração com o backend
-
-A configuração armazenada no contexto `plugin:jmbahub` do GLPI tem prioridade sobre as variáveis de ambiente:
-
-| Configuração | Variável alternativa | Uso |
-| --- | --- | --- |
-| `shared_secret` | `GLPI_APP_SHARED_SECRET` | Autenticação entre o backend e o plugin |
-| `api_base_url` | `GLPI_APP_API_BASE_URL` | Endereço do backend JMBA Hub |
-
-O segredo deve corresponder à configuração do backend. Não publique credenciais no repositório nem em chamados de suporte. Caso utilize variáveis de ambiente, disponibilize-as também ao processo PHP-FPM.
-
-As rotas de integração usam o prefixo `/plugins/jmbahub/`. O acesso exige as credenciais apropriadas para cada endpoint.
-
-## Migração de glpiapp
-
-1. Faça backup do banco e da pasta do plugin anterior.
-2. Desative `glpiapp` sem desinstalá-lo: a desinstalação remove a tabela de acessos antiga.
-3. Instale e ative `jmbahub`. A instalação copia os acessos e as configurações existentes, preservando os dados de origem e as configurações já presentes no novo contexto.
-4. Atualize o backend para usar `/plugins/jmbahub/` no lugar de `/plugins/glpiapp/`.
-5. Valide os acessos, formulários e notificações; arquive a pasta antiga fora de `plugins`.
-
-Não mantenha as duas versões ativas simultaneamente, pois ambas registram os eventos de chamados.
 
 ## Atualização e cache
 
