@@ -102,6 +102,21 @@ class PluginConfig
         ]);
     }
 
+    /** Separate from the legacy global shared secret and notification transport. */
+    public static function getRecoverySecret(): string
+    {
+        $stored = Config::getConfigurationValues('plugin:jmbahub', ['recovery_secret']);
+        $value = (string) ($stored['recovery_secret'] ?? '');
+        return str_starts_with($value, 'enc:') ? (string) (new GLPIKey())->decrypt(substr($value, 4)) : '';
+    }
+
+    public static function setRecoverySecret(string $secret): void
+    {
+        Config::setConfigurationValues('plugin:jmbahub', [
+            'recovery_secret' => 'enc:' . (new GLPIKey())->encrypt($secret),
+        ]);
+    }
+
     public static function getSharedSecret(): string
     {
         return self::resolve('shared_secret', 'GLPI_APP_SHARED_SECRET');

@@ -42,6 +42,13 @@ if (isset($_POST['activate_notifications'])) {
             true,
             INFO
         );
+        if (PluginConfig::getRecoverySecret() === '') {
+            Session::addMessageAfterRedirect(
+                'As notificações foram configuradas, mas a conexão automática do aplicativo não foi preparada. Tente Verificar e reparar novamente; se persistir, contate o suporte.',
+                true,
+                WARNING
+            );
+        }
     } catch (Throwable $error) {
         NotificationProvisioner::recordFailure($error);
         Session::addMessageAfterRedirect($error->getMessage(), true, ERROR);
@@ -64,6 +71,8 @@ if (isset($_POST['update'])) {
 }
 
 Html::header(__('JMBA Hub', 'jmbahub'), $_SERVER['PHP_SELF'], 'config', 'plugins');
+
+global $CFG_GLPI;
 
 echo "<div class='spaced d-flex align-items-center gap-3 mb-4'><img src='" . $CFG_GLPI['root_doc'] . "/Plugin/jmbahub/Logo' alt='' width='64' height='64'><div><h2 class='mb-1'>JMBA Hub</h2><p class='text-muted mb-0'>JMBA Soluções</p></div></div>";
 

@@ -21,11 +21,13 @@ use CommonItilObject_Item;
 use Config;
 use Glpi\Controller\AbstractController;
 use Glpi\Form\Form;
+use Glpi\Form\Comment;
 use Glpi\Form\Question;
 use Glpi\Form\Section;
 use Glpi\Http\Firewall;
 use Glpi\Security\Attribute\SecurityStrategy;
 use Glpi\Urgency;
+use ITILCategory;
 use Session;
 use Ticket;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -92,6 +94,11 @@ final class FormStructureController extends AbstractController
             $section->getQuestions()
         );
         usort($questions, fn ($a, $b) => $a['rank'] <=> $b['rank']);
+        $comments = array_map(
+            fn (Comment $comment) => $this->serializeComment($comment),
+            $section->getFormComments()
+        );
+        usort($comments, fn ($a, $b) => $a['rank'] <=> $b['rank']);
 
         $fields = $section->fields;
         $conditions = json_decode($fields['conditions'] ?? '[]', true) ?: [];
@@ -102,7 +109,23 @@ final class FormStructureController extends AbstractController
             'rank' => (int) ($fields['rank'] ?? 0),
             'visibilityStrategy' => $this->normalizeVisibilityStrategy($fields['visibility_strategy'] ?? null),
             'conditions' => $this->serializeConditions($conditions),
+            'comments' => array_values($comments),
             'questions' => array_values($questions),
+        ];
+    }
+
+    private function serializeComment(Comment $comment): array
+    {
+        $fields = $comment->fields;
+        $conditions = json_decode($fields['conditions'] ?? '[]', true) ?: [];
+
+        return [
+            'id' => (int) $fields['id'],
+            'name' => $fields['name'] ?? '',
+            'description' => $fields['description'] ?? null,
+            'rank' => (int) ($fields['vertical_rank'] ?? 0),
+            'visibilityStrategy' => $this->normalizeVisibilityStrategy($fields['visibility_strategy'] ?? null),
+            'conditions' => $this->serializeConditions($conditions),
         ];
     }
 
@@ -177,18 +200,23 @@ final class FormStructureController extends AbstractController
 
         $targetQuestionId = null;
         $targetSectionId = null;
+        $targetCommentId = null;
         if ($itemType === 'question' && !empty($itemUuid)) {
             $target = Question::getByUuid($itemUuid);
             $targetQuestionId = $target instanceof Question ? (int) $target->fields['id'] : null;
         } elseif ($itemType === 'section' && !empty($itemUuid)) {
             $target = Section::getByUuid($itemUuid);
             $targetSectionId = $target instanceof Section ? (int) $target->fields['id'] : null;
+        } elseif ($itemType === 'comment' && !empty($itemUuid)) {
+            $target = Comment::getByUuid($itemUuid);
+            $targetCommentId = $target instanceof Comment ? (int) $target->fields['id'] : null;
         }
 
         return [
             'itemType' => $itemType,
             'targetQuestionId' => $targetQuestionId,
             'targetSectionId' => $targetSectionId,
+            'targetCommentId' => $targetCommentId,
             'valueOperator' => $condition['value_operator'] ?? null,
             'value' => $condition['value'] ?? null,
             'logicOperator' => $condition['logic_operator'] ?? null,
@@ -214,6 +242,45 @@ final class FormStructureController extends AbstractController
      */
     private function enrichExtraData(string $type, ?array $extraData): ?array
     {
+        // NexTool Form Extender persiste as categorias permitidas em
+        // `extra_data.categories` (mapa id => id). No formulário HTML o
+        // plugin transforma esse mapa em um select simples cujo valor é o
+        // ID da ITILCategory. Expomos a mesma lista com os nomes completos
+        // para o app não precisar consultar nem reproduzir o filtro do
+        // Form Extender.
+        if ($type === 'FormExtenderITILCategory') {
+            $levels = [];
+            $categoryIds = array_values((array) ($extraData['categories'] ?? []));
+            foreach (array_unique(array_map('intval', $categoryIds)) as $categoryId) {
+                if ($categoryId <= 0) {
+                    continue;
+                }
+                $category = ITILCategory::getById($categoryId);
+                if (!$category instanceof ITILCategory) {
+                    continue;
+                }
+                $levels[] = [
+                    'value' => $categoryId,
+                    'label' => $category->fields['completename'] ?? $category->fields['name'] ?? (string) $categoryId,
+                ];
+            }
+            return array_merge($extraData ?? [], ['levels' => $levels]);
+        }
+
+        // Algumas instalações antigas persistiram o flag do dropdown como
+        // string ("0"/"1"). No JavaScript, "0" é truthy e fazia um dropdown
+        // simples aparecer como múltipla escolha. O core converte esse valor
+        // para bool ao criar QuestionTypeDropdownExtraDataConfig; fazemos a
+        // mesma normalização antes de expor a estrutura ao app.
+        if ($type === 'Dropdown') {
+            return array_merge($extraData ?? [], [
+                'is_multiple_dropdown' => filter_var(
+                    $extraData['is_multiple_dropdown'] ?? false,
+                    FILTER_VALIDATE_BOOLEAN
+                ),
+            ]);
+        }
+
         if ($type === 'Urgency') {
             $config = Config::getConfigurationValues('core', ['urgency_mask']);
             $mask = (int) ($config['urgency_mask'] ?? 0);
@@ -267,6 +334,16 @@ final class FormStructureController extends AbstractController
     /** "Glpi\Form\QuestionType\QuestionTypeShortText" -> "ShortText" */
     private function shortenType(string $fqcn): string
     {
+        // Tipos registrados pelo módulo NexTool Form Extender. Usamos nomes
+        // estáveis no contrato JSON para não acoplar o app aos nomes globais
+        // das classes PHP do plugin.
+        if ($fqcn === 'PluginNextoolFormextenderQuestionType') {
+            return 'FormExtenderITILCategory';
+        }
+        if ($fqcn === 'PluginNextoolFormextenderCpfCnpjQuestionType') {
+            return 'FormExtenderCpfCnpj';
+        }
+
         $short = strrchr($fqcn, '\\');
         $short = $short !== false ? substr($short, 1) : $fqcn;
         return str_starts_with($short, 'QuestionType') ? substr($short, strlen('QuestionType')) : $short;

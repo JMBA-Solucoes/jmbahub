@@ -53,6 +53,21 @@ trait NativeFormsAuthTrait
         $auth->user = $user;
         Session::init($auth);
 
+        // JMBA Hub: validate the fresh identity and requested profile.
+        if (PluginConfig::isAccessControlEnabled()) {
+            if (!class_exists(\PluginJmbahubAppuser::class)) require_once dirname(__DIR__, 2) . '/inc/appuser.class.php';
+            if (!\PluginJmbahubAppuser::isUserEnabled($glpiUserId)) {
+                return new JsonResponse(['code' => 'APP_ACCESS_DISABLED', 'error' => 'Seu acesso ao JMBA Hub está desabilitado.'], 403);
+            }
+        }
+        if ((int) Session::getLoginUserID() !== $glpiUserId) {
+            return new JsonResponse(['code' => 'APP_ACCESS_DISABLED', 'error' => 'Seu acesso ao JMBA Hub está desabilitado.'], 403);
+        }
+        if ($activeProfileId !== null && !array_key_exists($activeProfileId, $_SESSION['glpiprofiles'] ?? [])) {
+            return new JsonResponse(['code' => 'GLPI_CONTEXT_CHANGED', 'error' => 'Seu acesso ao perfil selecionado mudou. Selecione um contexto disponível.'], 409);
+        }
+        // JMBA Hub: end identity validation.
+
         // Ordem importa: changeActiveEntities() valida um pedido recursivo
         // contra $_SESSION['glpiactiveprofile']['entities'], que só existe
         // depois de changeProfile() rodar — ver mesmo bug/comentário em
@@ -68,6 +83,13 @@ trait NativeFormsAuthTrait
             Session::changeActiveEntities($activeEntityId, (bool) $activeEntityRecursive);
         }
 
+        // JMBA Hub: confirm the requested context, including entity zero.
+        if (($activeProfileId !== null && (int) ($_SESSION['glpiactiveprofile']['id'] ?? -1) !== $activeProfileId)
+            || ($activeEntityId !== null && ((int) ($_SESSION['glpiactive_entity'] ?? -1) !== $activeEntityId
+                || (bool) ($_SESSION['glpiactive_entity_recursive'] ?? false) !== (bool) $activeEntityRecursive))) {
+            return new JsonResponse(['code' => 'GLPI_CONTEXT_CHANGED', 'error' => 'Seu acesso ao perfil ou à entidade selecionada mudou. Selecione um contexto disponível.'], 409);
+        }
+        // JMBA Hub: end context confirmation.
         return null;
     }
 }

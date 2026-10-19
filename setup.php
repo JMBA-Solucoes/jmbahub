@@ -4,7 +4,7 @@
  * Plugin jmbahub - JMBA Hub Mobile Access
  */
 
-define('PLUGIN_JMBAHUB_VERSION', '1.4.0');
+define('PLUGIN_JMBAHUB_VERSION', '1.4.10');
 define('PLUGIN_JMBAHUB_MIN_GLPI', '10.0.0');
 define('PLUGIN_JMBAHUB_MAX_GLPI', '11.9.99');
 
@@ -120,6 +120,9 @@ function plugin_init_jmbahub(): void {
  * pelo GLPI_APP_SHARED_SECRET, sem sessão de navegador nem token CSRF.
  */
 function plugin_jmbahub_boot(): void {
+    \Glpi\Http\SessionManager::registerPluginStatelessPath('jmbahub', '#^/InstallationProof$#');
+    \Glpi\Http\SessionManager::registerPluginStatelessPath('jmbahub', '#^/SessionAuthorization$#');
+    \Glpi\Http\SessionManager::registerPluginStatelessPath('jmbahub', '#^/SessionCredential$#');
     \Glpi\Http\SessionManager::registerPluginStatelessPath('jmbahub', '#^/FormStructure/#');
     \Glpi\Http\SessionManager::registerPluginStatelessPath('jmbahub', '#^/FormSubmit/#');
     \Glpi\Http\SessionManager::registerPluginStatelessPath('jmbahub', '#^/FormActors/#');

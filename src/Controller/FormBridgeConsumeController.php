@@ -18,6 +18,7 @@
 namespace GlpiPlugin\Jmbahub\Controller;
 
 use Auth;
+use Config;
 use Glpi\Controller\AbstractController;
 use Glpi\Http\Firewall;
 use Glpi\Security\Attribute\SecurityStrategy;
@@ -33,7 +34,9 @@ use User;
 
 final class FormBridgeConsumeController extends AbstractController
 {
-    private const ERROR_MESSAGE = 'Sessão expirada. Feche esta tela e tente novamente.';
+    private const ERROR_MESSAGE = 'Este acesso ao formulário não está mais válido. Feche esta tela e abra o formulário novamente pelo aplicativo.';
+    private string $errorMessage = self::ERROR_MESSAGE;
+    private int $errorStatus = 400;
 
     #[SecurityStrategy(Firewall::STRATEGY_NO_CHECK)] // ainda não há sessão — este controller cria uma
     #[Route("/Consume", name: "jmbahub_form_bridge_consume", methods: ['GET'])]
@@ -49,6 +52,20 @@ final class FormBridgeConsumeController extends AbstractController
             return $this->errorResponse();
         }
 
+        // JMBA Hub: bind the browser bootstrap to a trusted, configured GLPI instance.
+        $configured = Config::getConfigurationValues('core', ['url_base']);
+        $localUrl = $this->canonicalUrl((string) ($configured['url_base'] ?? ''));
+        $issuedUrl = $this->canonicalUrl((string) ($context['glpiUrl'] ?? ''));
+        if ($localUrl === null) {
+            $this->errorMessage = 'O endereço desta instalação GLPI precisa ser configurado pelo administrador para abrir formulários pelo aplicativo.';
+            return $this->errorResponse();
+        }
+        if ($issuedUrl === null || $localUrl !== $issuedUrl) {
+            $this->errorMessage = 'Este link de formulário não é válido para esta instalação GLPI. Abra o formulário pelo aplicativo.';
+            return $this->errorResponse();
+        }
+        // JMBA Hub: end instance binding.
+
         $user = new User();
         if (!isset($context['glpiUserId']) || !$user->getFromDB((int) $context['glpiUserId'])) {
             return $this->errorResponse();
@@ -58,6 +75,27 @@ final class FormBridgeConsumeController extends AbstractController
         $auth->auth_succeded = true;
         $auth->user = $user;
         Session::init($auth);
+
+        // JMBA Hub: reject revoked identities and unavailable profiles before selecting context.
+        if (PluginConfig::isAccessControlEnabled()) {
+            if (!class_exists(\PluginJmbahubAppuser::class)) require_once dirname(__DIR__, 2) . '/inc/appuser.class.php';
+            if (!\PluginJmbahubAppuser::isUserEnabled((int) $context['glpiUserId'])) {
+                $this->errorMessage = 'Seu acesso ao JMBA Hub está desabilitado. Contate o administrador.';
+                $this->errorStatus = 403;
+                return $this->errorResponse();
+            }
+        }
+        if ((int) Session::getLoginUserID() !== (int) $context['glpiUserId']) {
+            $this->errorMessage = 'Seu acesso ao GLPI está desabilitado. Contate o administrador.';
+            $this->errorStatus = 403;
+            return $this->errorResponse();
+        }
+        if (isset($context['activeProfileId']) && !array_key_exists((int) $context['activeProfileId'], $_SESSION['glpiprofiles'] ?? [])) {
+            $this->errorMessage = 'Seu acesso ao perfil selecionado mudou. Feche esta tela e selecione um contexto disponível no aplicativo.';
+            $this->errorStatus = 409;
+            return $this->errorResponse();
+        }
+        // JMBA Hub: end browser identity validation.
 
         // Ordem importa: changeActiveEntities() valida um pedido recursivo
         // contra $_SESSION['glpiactiveprofile']['entities'], que só existe
@@ -80,6 +118,16 @@ final class FormBridgeConsumeController extends AbstractController
             Session::changeActiveEntities((int) $context['activeEntityId'], (bool) ($context['activeEntityRecursive'] ?? false));
         }
 
+        // JMBA Hub: never open a form in a silently substituted context.
+        if ((isset($context['activeProfileId']) && (int) ($_SESSION['glpiactiveprofile']['id'] ?? -1) !== (int) $context['activeProfileId'])
+            || (isset($context['activeEntityId']) && ((int) ($_SESSION['glpiactive_entity'] ?? -1) !== (int) $context['activeEntityId']
+                || (bool) ($_SESSION['glpiactive_entity_recursive'] ?? false) !== (bool) ($context['activeEntityRecursive'] ?? false)))) {
+            $this->errorMessage = 'Seu acesso ao perfil ou à entidade selecionada mudou. Feche esta tela e selecione um contexto disponível no aplicativo.';
+            $this->errorStatus = 409;
+            return $this->errorResponse();
+        }
+        // JMBA Hub: end browser context confirmation.
+
         $target = !empty($context['formId'])
             ? '/Form/Render/' . (int) $context['formId']
             : '/ServiceCatalog';
@@ -101,8 +149,13 @@ final class FormBridgeConsumeController extends AbstractController
             return null;
         }
 
+        if (strtolower((string) parse_url($baseUrl, PHP_URL_SCHEME)) !== 'https') {
+            $this->errorMessage = 'A conexão segura entre o GLPI e o servidor do aplicativo precisa ser configurada pelo administrador.';
+            $this->errorStatus = 503;
+            return null;
+        }
         try {
-            $response = Toolbox::getGuzzleClient(['timeout' => 5])->post(
+            $response = Toolbox::getGuzzleClient(['timeout' => 5, 'allow_redirects' => false, 'http_errors' => false])->post(
                 rtrim($baseUrl, '/') . '/forms/internal/consume-nonce',
                 [
                     'headers' => [
@@ -114,20 +167,43 @@ final class FormBridgeConsumeController extends AbstractController
                 ]
             );
         } catch (GuzzleException $e) {
-            Toolbox::logInFile('php-errors', 'jmbahub: falha ao consumir nonce da ponte de formulários: ' . $e->getMessage());
-            return null;
-        }
-
-        if ($response->getStatusCode() !== 200) {
+            Toolbox::logInFile('php-errors', 'jmbahub: falha ao consumir nonce da ponte de formulários: ' . get_class($e));
             return null;
         }
 
         $body = json_decode((string) $response->getBody(), true);
+        if ($response->getStatusCode() !== 200) {
+            $code = is_array($body) ? ($body['code'] ?? '') : '';
+            $messages = [
+                'HUB_SESSION_REVOKED' => 'Sua sessão no JMBA Hub foi encerrada. Feche esta tela e entre novamente no aplicativo.',
+                'HUB_SESSION_EXPIRED' => 'Seu período de acesso terminou. Feche esta tela e entre novamente no aplicativo.',
+                'GLPI_CONTEXT_CHANGED' => 'Seu acesso ao perfil ou à entidade selecionada mudou. Feche esta tela e selecione um contexto disponível no aplicativo.',
+                'SESSION_BUSY' => 'Há outra operação em andamento nesta sessão. Aguarde alguns instantes e abra o formulário novamente.',
+            ];
+            $this->errorMessage = $messages[$code] ?? ($response->getStatusCode() >= 500
+                ? 'O servidor do JMBA Hub não conseguiu confirmar este acesso. Tente novamente em instantes.'
+                : self::ERROR_MESSAGE);
+            $this->errorStatus = isset($messages[$code]) ? $response->getStatusCode() : 400;
+            return null;
+        }
+
         return is_array($body) ? $body : null;
+    }
+
+    private function canonicalUrl(string $url): ?string
+    {
+        $parts = parse_url($url);
+        if ($parts === false || empty($parts['scheme']) || empty($parts['host'])
+            || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) return null;
+        $scheme = strtolower($parts['scheme']);
+        if (!in_array($scheme, ['https', 'http'], true)) return null;
+        $port = $parts['port'] ?? ($scheme === 'https' ? 443 : 80);
+        $suffix = $port === ($scheme === 'https' ? 443 : 80) ? '' : ':' . $port;
+        return $scheme . '://' . strtolower($parts['host']) . $suffix . rtrim($parts['path'] ?? '', '/');
     }
 
     private function errorResponse(): Response
     {
-        return new Response(self::ERROR_MESSAGE, 400);
+        return new Response($this->errorMessage, $this->errorStatus, ['Cache-Control' => 'no-store, private', 'Content-Type' => 'text/plain; charset=UTF-8']);
     }
 }

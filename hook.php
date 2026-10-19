@@ -39,7 +39,7 @@ function plugin_jmbahub_install(): bool {
     // Instalação nunca falha por indisponibilidade externa. O autorreparo
     // também fica disponível na tela de configuração do plugin.
     try {
-        if (!$legacy && class_exists(\GlpiPlugin\Jmbahub\NotificationProvisioner::class)) {
+        if (class_exists(\GlpiPlugin\Jmbahub\NotificationProvisioner::class)) {
             \GlpiPlugin\Jmbahub\NotificationProvisioner::provision();
         }
     } catch (\Throwable $error) {

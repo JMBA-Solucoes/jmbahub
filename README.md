@@ -15,13 +15,13 @@ Integração do GLPI com o aplicativo **JMBA Hub**, desenvolvida pela **JMBA Sol
 
 ## Compatibilidade
 
-Validado no **GLPI 11.0.8**. Os metadados aceitam GLPI 10.0.0 a 11.9.99, mas os recursos de formulários nativos dependem do GLPI 11; a versão 10 não foi validada nesta release. GLPI 12 não está incluído no intervalo suportado.
+Recuperação de sessão validada no **GLPI 11.0.11**. Os metadados aceitam GLPI 10.0.0 a 11.9.99, mas os recursos de formulários nativos dependem do GLPI 11; a versão 10 não foi validada nesta release. GLPI 12 não está incluído no intervalo suportado.
 
 O plugin depende do backend e do aplicativo JMBA Hub para os fluxos móveis e o recebimento das notificações. Esses componentes não fazem parte deste repositório.
 
 ## Instalação
 
-1. Baixe `jmbahub-1.4.0.tar.gz` ou `jmbahub-1.4.0.zip` na [release](https://github.com/JMBA-Solucoes/jmbahub/releases/latest).
+1. Baixe `jmbahub-1.4.10.tar.gz` ou `jmbahub-1.4.10.zip` na [release](https://github.com/JMBA-Solucoes/jmbahub/releases/latest).
 2. Extraia o pacote no diretório `plugins` da instalação GLPI. O resultado deve ser `plugins/jmbahub/setup.php`.
 3. Ajuste as permissões para permitir a leitura pelo usuário do servidor web.
 4. Em **Configurar → Plugins**, instale e ative **JMBA Hub**.
@@ -43,7 +43,7 @@ O painel está disponível em **Configurar → Plugins → JMBA Hub**. Com o con
 
 ### Acesso ao aplicativo
 
-Habilite o módulo de controle de acesso e gerencie as permissões na ficha do usuário ou pelas ações em massa em **Administração → Usuários**. A coluna/filtro **Habilitado para o app (JMBA Hub)** permite consultar os acessos.
+O controle individual é opcional. Desligado, permite o acesso de usuários autenticados no GLPI, conforme seus perfis e entidades. Ligado, exige também habilitação na ficha do usuário ou pelas ações em massa em **Administração → Usuários**. A coluna/filtro **Habilitado para o app (JMBA Hub)** permite consultar os acessos. A atualização preserva a opção configurada na instalação.
 
 ### Notificações
 
@@ -51,6 +51,24 @@ Configure a URL base do GLPI e use **Ativar notificações** ou **Verificar e re
 
 As regras do painel definem quais participantes recebem cada evento. Falhas de conexão são exibidas na configuração e não impedem a instalação do plugin.
 
+
+### Recuperação da sessão do aplicativo
+
+A versão 1.4.10 integra a recuperação da conexão GLPI com a sessão do JMBA Hub,
+permitindo restabelecer a conexão quando a sessão PHP expira, enquanto o acesso
+continua autorizado. Exige backend JMBA Hub atualizado e recuperação habilitada.
+O plugin usa o formato de sessão REST e o método oficial de leitura da credencial
+do GLPI, preservando tokens pessoais existentes e verificando as permissões atuais.
+
+A instalação/atualização tenta preparar a integração automaticamente. **Verificar
+e reparar** permite repetir essa preparação se o serviço estiver indisponível.
+Use a URL pública HTTPS do GLPI; NPM e outros terminadores TLS podem encaminhar
+HTTP na rede interna confiável, sem cadastro manual de IPs de proxy no plugin.
+A API continua validando o certificado e o destino público; a rede interna entre
+proxy e PHP precisa pertencer à infraestrutura confiável da instalação.
+
+Sessões do aplicativo criadas antes da preparação da recuperação precisam de um
+novo login uma vez. A API e o aplicativo são distribuídos separadamente deste plugin.
 
 ## Atualização e cache
 
@@ -64,7 +82,7 @@ A raiz deste repositório corresponde ao conteúdo de `plugins/jmbahub`.
 find . -type f -name '*.php' -not -path './.git/*' -exec php -l {} \\;
 ```
 
-A validação de sintaxe não substitui os testes de integração em uma instalação GLPI. A release 1.4.0 foi instalada e ativada no GLPI 11.0.8, com conferência da migração de configurações e acessos e da rejeição de chamadas sem autenticação.
+A versão 1.4.10 passou em 34 verificações HTTP integradas no GLPI 11.0.11, incluindo credencial cifrada, identidade, permissões removidas, sessão PHP encerrada e rejeição de credenciais inválidas. O piloto teve 13 verificações pela API de produção e confirmação do usuário de sucesso da validação biométrica no aparelho. O roteiro completo e as evidências técnicas estão no repositório do aplicativo; essa confirmação não representa teste de todos os cenários móveis ou versões GLPI.
 
 ## Suporte e licença
 

@@ -32,6 +32,7 @@ use Glpi\Form\ServiceCatalog\ServiceCatalogManager;
 use Glpi\Http\Firewall;
 use Glpi\RichText\RichText;
 use Glpi\Security\Attribute\SecurityStrategy;
+use Glpi\UI\IllustrationManager;
 use KnowbaseItem;
 use Session;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -137,14 +138,54 @@ final class ServiceCatalogController extends AbstractController
             ? trim(RichText::getTextFromHtml($rawDescription, false, true))
             : '';
 
+        $illustration = $item->getServiceCatalogItemIllustration();
+
         return [
             'id'            => method_exists($item, 'getID') ? (int) $item->getID() : null,
             'type'          => $type,
             'title'         => $item->getServiceCatalogItemTitle(),
             'description'   => $description,
-            'illustration'  => $item->getServiceCatalogItemIllustration(),
+            'illustration'  => $illustration,
+            'illustrationDataUri' => $this->getCustomIllustrationDataUri($illustration),
             'isPinned'      => $item->isServiceCatalogItemPinned(),
             'isLeaf'        => $item instanceof ServiceCatalogLeafInterface,
         ];
+    }
+
+    /**
+     * Entrega ao app somente ilustrações personalizadas já autorizadas pelo
+     * catálogo. O data URI evita expor o arquivo interno do GLPI e dispensa
+     * uma segunda rota/sessão para baixar a imagem.
+     */
+    private function getCustomIllustrationDataUri(string $illustration): ?string
+    {
+        if (!str_starts_with($illustration, IllustrationManager::CUSTOM_ILLUSTRATION_PREFIX)) {
+            return null;
+        }
+
+        $manager = new IllustrationManager();
+        $id = $manager->getCustomIconIdFromPrefixedString($illustration);
+        $path = $manager->getCustomIllustrationFile($id);
+        if ($path === null || !is_readable($path)) {
+            return null;
+        }
+
+        // Evita que um upload muito grande infle a resposta paginada.
+        $size = filesize($path);
+        if ($size === false || $size > 2 * 1024 * 1024) {
+            return null;
+        }
+
+        $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($path);
+        if (!in_array($mime, ['image/png', 'image/jpeg', 'image/gif', 'image/webp'], true)) {
+            return null;
+        }
+
+        $contents = file_get_contents($path);
+        if ($contents === false) {
+            return null;
+        }
+
+        return sprintf('data:%s;base64,%s', $mime, base64_encode($contents));
     }
 }

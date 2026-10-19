@@ -21,8 +21,11 @@ final class NotificationProvisioner
             throw new RuntimeException('Configure a URL base do GLPI antes de ativar as notificações.');
         }
 
+        if (!str_starts_with(PluginConfig::getApiBaseUrl(), 'https://')) {
+            throw new RuntimeException('A configuração automática requer API HTTPS.');
+        }
         try {
-            $response = Toolbox::getGuzzleClient(['timeout' => 15])->post(
+            $response = Toolbox::getGuzzleClient(['timeout' => 30, 'allow_redirects' => false])->post(
                 rtrim(PluginConfig::getApiBaseUrl(), '/') . '/integrations/glpi/provision',
                 [
                     'headers' => ['Accept' => 'application/json'],
@@ -39,6 +42,15 @@ final class NotificationProvisioner
         }
 
         $provisioned = json_decode((string) $response->getBody(), true);
+        if (is_array($provisioned) && !empty($provisioned['recoverySecret'])) {
+            if (($provisioned['installationId'] ?? '') !== $credentials['installation_id']
+                || ($provisioned['glpiUrl'] ?? '') !== $glpiUrl
+                || !is_string($provisioned['recoverySecret'])
+                || !preg_match('/^[A-Za-z0-9_-]{43}$/D', $provisioned['recoverySecret'])) {
+                throw new RuntimeException('A configuração de recuperação retornada não corresponde à instalação.');
+            }
+            PluginConfig::setRecoverySecret($provisioned['recoverySecret']);
+        }
         if (!is_array($provisioned) || empty($provisioned['webhookUrl']) || empty($provisioned['webhookSecret'])) {
             throw new RuntimeException('O serviço retornou uma configuração inválida.');
         }
