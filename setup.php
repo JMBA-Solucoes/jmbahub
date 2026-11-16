@@ -4,7 +4,7 @@
  * Plugin jmbahub - JMBA Hub Mobile Access
  */
 
-define('PLUGIN_JMBAHUB_VERSION', '1.4.10');
+define('PLUGIN_JMBAHUB_VERSION', '1.4.14');
 define('PLUGIN_JMBAHUB_MIN_GLPI', '10.0.0');
 define('PLUGIN_JMBAHUB_MAX_GLPI', '11.9.99');
 

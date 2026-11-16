@@ -17,6 +17,8 @@ function plugin_jmbahub_install(): bool {
         Config::setConfigurationValues('plugin:jmbahub', array_replace($legacy, $current));
     }
 
+    \GlpiPlugin\Jmbahub\PluginConfig::migrateSsoApplications();
+
     $default_charset   = DBConnection::getDefaultCharset();
     $default_collation = DBConnection::getDefaultCollation();
     $default_key_sign  = DBConnection::getDefaultPrimaryKeySignOption();

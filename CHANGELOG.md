@@ -1,5 +1,16 @@
 # Histórico de alterações
 
+## 1.4.14 — 2026-11-16
+
+- Sincroniza a integração SSO desenvolvida no repositório do aplicativo com o repositório distribuído do plugin.
+- Adiciona controle independente de SSO móvel e seleção explícita de aplicações Nextools no painel.
+- Vincula tentativa, identidade, sessão e conclusão à aplicação autorizada; revalida política e MFA.
+- Adiciona rotas SsoAvailability, SsoStart e SsoCallback, assinatura de disponibilidade v2/conclusão v3 e retorno por scheme fixado pelo administrador.
+- Preserva configurações anteriores no upgrade; instalações novas começam com SSO desligado e sem aplicações autorizadas.
+- Mantém recuperação de sessão, notificações e controle de acesso existentes.
+
+Exige API Java e app compatíveis; login real, MFA e retorno ao aparelho precisam de validação integrada no ambiente de destino.
+
 ## 1.4.10 — 2026-10-19
 
 - Recuperação da conexão GLPI integrada à sessão do JMBA Hub, com credencial exclusiva por instalação.
