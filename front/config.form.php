@@ -20,6 +20,12 @@ use GlpiPlugin\Jmbahub\NotificationProvisioner;
 Session::checkRight('config', UPDATE);
 
 $modules = [
+    'sso_enabled' => [
+        'icon'        => 'ti-login',
+        'name'        => __('Permitir SSO no aplicativo', 'jmbahub'),
+        'description' => __('Exibe a entrada com SSO no aplicativo quando o SSO Login do Nextools estiver ativo e disponível. Você pode manter o SSO do GLPI e desligar apenas seu uso no app. Desligar não encerra sessões já abertas.', 'jmbahub'),
+        'enabled'     => PluginConfig::isSsoAllowedInApp(),
+    ],
     'access_control_enabled' => [
         'icon'        => 'ti-shield-lock',
         'name'        => __('Controle de acesso ao app', 'jmbahub'),
@@ -60,6 +66,16 @@ if (isset($_POST['update'])) {
     $values = [];
     foreach (array_keys($modules) as $configKey) {
         $values[$configKey] = isset($_POST[$configKey]) && $_POST[$configKey] == 1 ? '1' : '0';
+    }
+    try {
+        $selected = PluginConfig::normalizeSsoAppIds($_POST['sso_allowed_app_ids'] ?? []);
+        $known = array_column(\GlpiPlugin\Jmbahub\SsoAvailability::applicationsForAdmin(), 'id');
+        $retained = PluginConfig::getSsoAllowedAppIds();
+        if (array_diff($selected, array_merge($known, $retained))) throw new InvalidArgumentException('Aplicação SSO desconhecida.');
+        $values['sso_allowed_app_ids'] = json_encode($selected);
+    } catch (Throwable $error) {
+        Session::addMessageAfterRedirect('Seleção de aplicações SSO inválida. Nenhuma alteração foi salva.', true, ERROR);
+        Html::back(); exit;
     }
     Config::setConfigurationValues('plugin:jmbahub', $values);
     $submittedMatrix = is_array($_POST['notification_matrix'] ?? null)
@@ -161,6 +177,26 @@ foreach ($modules as $configKey => $module) {
     echo "</div>";
 }
 echo "</div>";
+
+$ssoSelected = PluginConfig::getSsoAllowedAppIds();
+$ssoApps = \GlpiPlugin\Jmbahub\SsoAvailability::applicationsForAdmin();
+$knownSso = array_column($ssoApps, 'id');
+foreach (array_diff($ssoSelected, $knownSso) as $missingId) {
+    $ssoApps[] = ['id' => $missingId, 'name' => 'Aplicação #' . $missingId,
+        'provider' => '', 'ready' => false];
+}
+echo "<div class='card mt-3'><div class='card-body'><h3>Aplicações SSO permitidas no aplicativo</h3>";
+echo "<p class='text-muted'>Selecione as aplicações do Nextools liberadas para o app. Sem seleção, o SSO do aplicativo fica indisponível.</p>";
+if (!$ssoApps) echo "<p>Nenhuma aplicação Nextools disponível.</p>";
+foreach ($ssoApps as $app) {
+    $id = (int) $app['id'];
+    $label = htmlspecialchars($app['name'] . ' — ' . $app['provider'] . ' (#' . $id . ')', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $checked = in_array($id, $ssoSelected, true) ? ' checked' : '';
+    $status = $app['ready'] ? 'Disponível' : 'Indisponível: desativada, incompleta ou não encontrada';
+    echo "<label class='form-check mb-2'><input type='checkbox' class='form-check-input' name='sso_allowed_app_ids[]' value='{$id}'{$checked}>";
+    echo "<span class='form-check-label'>{$label}<small class='d-block text-muted'>{$status}</small></span></label>";
+}
+echo "</div></div>";
 
 echo "<div class='mt-3'>";
 echo "<button type='submit' name='update' class='btn btn-primary'>";

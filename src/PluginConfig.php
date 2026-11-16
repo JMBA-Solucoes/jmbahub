@@ -49,6 +49,15 @@ use Toolbox;
 
 class PluginConfig
 {
+    /** Retorno fixado pelo administrador; nunca aceito pela query do navegador. */
+    public static function getSsoReturnUri(): ?string
+    {
+        $values = Config::getConfigurationValues('plugin:jmbahub', ['sso_return_scheme']);
+        $scheme = $values['sso_return_scheme'] ?? '';
+        return is_string($scheme) && preg_match('/^[a-z][a-z0-9-]{7,63}$/D', $scheme)
+            ? $scheme . '://sso/complete' : null;
+    }
+
     public const DEFAULT_API_BASE_URL = 'https://api-glpi-app.jmbasolucoes.com.br';
 
     /** @return array<string, array{icon: string, name: string, description: string, defaults: array<string, bool>}> */
@@ -126,6 +135,64 @@ class PluginConfig
     {
         $configured = self::resolve('api_base_url', 'GLPI_APP_API_BASE_URL');
         return $configured !== '' ? $configured : self::DEFAULT_API_BASE_URL;
+    }
+
+    /** SSO fica desabilitado até que toda a integração esteja disponível. */
+    public static function isSsoEnabled(): bool
+    {
+        return self::isSsoAllowedInApp() && SsoAvailability::availableApplications() !== [];
+    }
+
+    /** Explicit allowlist: absence never authorizes an application. */
+    public static function getSsoAllowedAppIds(): array
+    {
+        $stored = Config::getConfigurationValues('plugin:jmbahub', ['sso_allowed_app_ids']);
+        $value = json_decode((string) ($stored['sso_allowed_app_ids'] ?? '[]'), true);
+        return self::normalizeSsoAppIds($value);
+    }
+
+    public static function normalizeSsoAppIds($value): array
+    {
+        if (!is_array($value) || count($value) > 100) throw new \InvalidArgumentException('Seleção SSO inválida.');
+        $ids = [];
+        foreach ($value as $id) {
+            if ((!is_int($id) && !is_string($id)) || !preg_match('/^[1-9][0-9]{0,8}$/D', (string) $id)) {
+                throw new \InvalidArgumentException('Aplicação SSO inválida.');
+            }
+            $ids[] = (int) $id;
+        }
+        $ids = array_values(array_unique($ids)); sort($ids, SORT_NUMERIC);
+        return $ids;
+    }
+
+    /** Called only by installation/upgrade, not on public requests. */
+    public static function migrateSsoApplications(): void
+    {
+        $stored = Config::getConfigurationValues('plugin:jmbahub');
+        if (array_key_exists('sso_allowed_app_ids', $stored)) return;
+        $ids = array_key_exists('sso_enabled', $stored) && self::getSsoProviderAppId() > 0
+            ? [self::getSsoProviderAppId()] : [];
+        Config::setConfigurationValues('plugin:jmbahub', ['sso_allowed_app_ids' => json_encode($ids)]);
+    }
+
+    public static function getSsoProviderAppId(): int
+    {
+        $stored = Config::getConfigurationValues('plugin:jmbahub', ['sso_provider_app_id']);
+        $value = $stored['sso_provider_app_id'] ?? '1';
+        return is_scalar($value) && preg_match('/^[1-9][0-9]{0,8}$/D', (string) $value) ? (int) $value : 0;
+    }
+
+    public static function isSsoAllowedInApp(): bool
+    {
+        $stored = Config::getConfigurationValues('plugin:jmbahub', ['sso_enabled']);
+        return ($stored['sso_enabled'] ?? '') === '1';
+    }
+
+    public static function getExistingInstallationId(): ?string
+    {
+        $stored = Config::getConfigurationValues('plugin:jmbahub', ['installation_id']);
+        $id = (string) ($stored['installation_id'] ?? '');
+        return $id !== '' ? $id : null;
     }
 
     /** @return array{endpoint: string, secret: string}|null */

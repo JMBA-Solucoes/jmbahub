@@ -21,7 +21,7 @@ O plugin depende do backend e do aplicativo JMBA Hub para os fluxos móveis e o 
 
 ## Instalação
 
-1. Baixe `jmbahub-1.4.10.tar.gz` ou `jmbahub-1.4.10.zip` na [release](https://github.com/JMBA-Solucoes/jmbahub/releases/latest).
+1. Baixe `jmbahub-1.4.14.tar.gz` ou `jmbahub-1.4.14.zip` na [release](https://github.com/JMBA-Solucoes/jmbahub/releases/latest).
 2. Extraia o pacote no diretório `plugins` da instalação GLPI. O resultado deve ser `plugins/jmbahub/setup.php`.
 3. Ajuste as permissões para permitir a leitura pelo usuário do servidor web.
 4. Em **Configurar → Plugins**, instale e ative **JMBA Hub**.
@@ -89,3 +89,18 @@ A versão 1.4.10 passou em 34 verificações HTTP integradas no GLPI 11.0.11, in
 - [JMBA Soluções](https://jmbasolucoes.com.br)
 - [Relatar um problema](https://github.com/JMBA-Solucoes/jmbahub/issues)
 - Licença **GPL-2.0-or-later**. Consulte [LICENSE](LICENSE).
+
+
+## SSO Nextools no aplicativo — 1.4.14
+
+Em **Configurar → Plugins → JMBA Hub**, ative **Permitir SSO no aplicativo**, selecione explicitamente as aplicações em **Aplicações SSO permitidas no aplicativo** e salve. Uma instalação nova começa com SSO desligado e seleção vazia. O upgrade preserva apenas a seleção anterior. O SSO web do GLPI e as sessões móveis existentes não são desligados por esse controle.
+
+É necessário Nextools ativo, módulo SSO Login carregado e aplicação pronta para login. Zero aplicações autorizadas/prontas mantém o SSO móvel indisponível. Aplicações removidas ou indisponíveis permanecem identificadas no painel. Com várias aplicações disponíveis, o app exige escolha explícita.
+
+Configure `plugin:jmbahub.sso_return_scheme` para o aplicativo instalado: `jmbahub-portfolio` no Portfólio, `jmbahub-jmbasolucoes` no app JMBA Soluções. O painel ainda não possui campo para esse parâmetro. Uma instalação usa um scheme fixo; não copie configurações de outro ambiente.
+
+A integração exige API Java compatível com disponibilidade assinada v2, conclusão assinada v3 e migração V22, além do app com seleção de aplicações e retorno registrado. Atualize o conjunto antes de validar o fluxo. O navegador trata autenticação/MFA no Nextools/IdP; o callback exige sessão autorizada, origem da aplicação escolhida e POST com CSRF. Nenhum token pessoal é criado para SSO e a sessão REST separada permanece no backend.
+
+Atualize a pasta completa `plugins/jmbahub`, faça o upgrade do plugin e limpe o cache GLPI. Se necessário, recarregue PHP-FPM/OPcache. Não desinstale o plugin para atualizar: a desinstalação remove os acessos cadastrados. A ativação e a seleção devem ser conferidas novamente após a atualização.
+
+Testes isolados de política, identidade, callback, início e assinatura estão em `tests/sso-*.php`. Eles não substituem teste integrado de GLPI, IdP/MFA e Android/iOS.
